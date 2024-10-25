@@ -1,18 +1,30 @@
-use std::ffi::c_void;
-use std::mem;
 use clap::arg;
 use clap::Command;
+use std::ffi::c_void;
+use std::mem;
+use std::ptr::null_mut;
+use windows::Win32::Foundation::GetLastError;
+use windows::Win32::Foundation::LUID;
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HMODULE};
+use windows::Win32::Security::AdjustTokenPrivileges;
+use windows::Win32::Security::LookupPrivilegeValueW;
+use windows::Win32::Security::LUID_AND_ATTRIBUTES;
+use windows::Win32::Security::SE_INC_BASE_PRIORITY_NAME;
+use windows::Win32::Security::SE_PRIVILEGE_ENABLED;
+use windows::Win32::Security::TOKEN_ALL_ACCESS;
+use windows::Win32::Security::TOKEN_PRIVILEGES;
+use windows::Win32::System::ProcessStatus::LIST_MODULES_DEFAULT;
 use windows::Win32::System::ProcessStatus::{
     EnumProcesses, K32EnumProcessModulesEx, K32GetModuleBaseNameW,
 };
 use windows::Win32::System::SystemInformation::{
     GetSystemCpuSetInformation, SYSTEM_CPU_SET_INFORMATION,
 };
-use windows::Win32::System::Threading::{
-    OpenProcess, SetProcessDefaultCpuSets, PROCESS_QUERY_INFORMATION,
-    PROCESS_SET_LIMITED_INFORMATION, PROCESS_VM_READ,
-};
+use windows::Win32::System::Threading::GetCurrentProcess;
+use windows::Win32::System::Threading::OpenProcessToken;
+use windows::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
+use windows::Win32::System::Threading::PROCESS_SET_LIMITED_INFORMATION;
+use windows::Win32::System::Threading::{OpenProcess, SetProcessDefaultCpuSets};
 
 fn cpu_ids() -> Vec<u32> {
     let mut buffer_size = 0u32;
@@ -62,20 +74,37 @@ fn _smt_on(process: HANDLE) -> bool {
     }
 }
 
-fn find_process(search_name: &str, process_id: u32) {
+fn find_process(
+    search_name: Option<&String>,
+    search_pid: Option<u32>,
+    process_id: u32,
+) -> Option<HANDLE> {
     let mut process_name: [u16; 260] = [0; 260];
 
     // Open process with the required access flags
     let h_process: HANDLE = unsafe {
         match OpenProcess(
-            PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_SET_LIMITED_INFORMATION,
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_LIMITED_INFORMATION,
             false,
             process_id,
         ) {
-            Err(_e) => return,
-            Ok(handle) => handle,
+            Err(e) => {
+                println!("Error opening process: {}", e);
+                return None;
+            }
+            Ok(handle) => {
+                println!("Process opened: {}", process_id);
+                handle
+            }
         }
     };
+
+    if let Some(search_pid) = search_pid {
+        if search_pid == process_id {
+            return Some(h_process);
+        }
+    }
+
     let mut num_modules_returned: u32 = 0;
     let mut modules: Vec<*mut c_void> = Vec::with_capacity(1024);
     let modules_uninit = modules.spare_capacity_mut();
@@ -87,42 +116,81 @@ fn find_process(search_name: &str, process_id: u32) {
             modules_uninit.as_mut_ptr().cast(),
             modules_uninit.len() as u32,
             &mut num_modules_returned,
-            0x03,
+            LIST_MODULES_DEFAULT.0,
         )
         .as_bool()
         {
             // https://users.rust-lang.org/t/ffi-how-to-pass-a-array-with-structs-to-a-c-func-that-fills-the-array-out-pointer-and-then-how-to-access-the-items-after-in-my-rust-code/83798/2
             modules.set_len(num_modules_returned as usize);
-            for module in modules {
+            for _module in modules {
                 // Get process base name
                 let length = K32GetModuleBaseNameW(
                     h_process,
-                    HMODULE(module), // HMODULE(modules.as_mut_ptr().cast()),
+                    HMODULE(null_mut()), // HMODULE(module),
                     &mut process_name,
                 );
 
                 let process_name = String::from_utf16_lossy(&process_name[..length as usize]);
-                // if process_name.contains("EpicGamesLauncher.exe") {
-                if process_name.contains(search_name) {
-                    println!("Disabling SMT: {}, PID: {}", process_name, process_id);
-                    println!("Result: {}", smt_off(h_process));
-                    return;
+                println!("{}", process_name);
+
+                if let Some(search_name) = search_name {
+                    if process_name.contains(search_name) {
+                        return Some(h_process);
+                    }
                 }
             }
+        } else {
+            println!("Enumerating modules failed, {:?}", GetLastError());
         }
-        // Close the process handle, not actually necessary in this case
+        // Close the process handle if it wasn't returned, not actually necessary in this case
         let _ = CloseHandle(h_process);
     }
+    return None;
 }
 
+fn escalate() {
+    unsafe {
+        let process = GetCurrentProcess();
+        let mut token: HANDLE = HANDLE(null_mut());
+        OpenProcessToken(process, TOKEN_ALL_ACCESS, &mut token)
+            .expect("Cannot escalate privileges");
+        let mut luid: LUID = Default::default();
+
+        LookupPrivilegeValueW(None, SE_INC_BASE_PRIORITY_NAME, &mut luid)
+            .expect("Could not lookup privilege");
+
+        let tp = TOKEN_PRIVILEGES {
+            Privileges: [LUID_AND_ATTRIBUTES {
+                Luid: luid,
+                Attributes: SE_PRIVILEGE_ENABLED,
+            }],
+            PrivilegeCount: 1,
+        };
+        AdjustTokenPrivileges(
+            token,
+            false,
+            Some(&tp),
+            mem::size_of_val(&tp) as u32,
+            None,
+            None,
+        )
+        .expect("Access denied. Try running from an elevated command prompt.\n");
+        println!("Succesfully escalated privileges");
+        let _ = CloseHandle(token);
+        let _ = CloseHandle(process);
+    }
+}
 fn main() {
-  let matches = Command::new("smt_off") // requires `cargo` feature
-  .arg(arg!([name] "Process name to search and disable SMT").required(true))
-  .get_matches();
+    let matches = Command::new("smt_off") // requires `cargo` feature
+        .arg(arg!(-n --name <NAME> "Process name to search and disable SMT"))
+        .arg(arg!(-p --PID <PID> "PID of the process"))
+        .get_matches();
 
-  let search_name: &String = matches.get_one("name").unwrap();
+    let search_name: Option<&String> = matches.get_one("name");
+    let search_pid: Option<u32> = matches.get_one("PID").map(|x: &String| x.parse::<u32>().expect("PID invalid"));
 
-  let mut a_processes: [u32; 1024] = [0; 1024];
+    escalate();
+    let mut a_processes: [u32; 1024] = [0; 1024];
     let mut cb_needed = 0;
 
     // Enumerate processes
@@ -139,7 +207,14 @@ fn main() {
     // Print each process name and ID
     for &process_id in &a_processes[..c_processes as usize] {
         if process_id != 0 {
-            find_process(search_name, process_id);
+            if let Some(handle) = find_process(search_name, search_pid, process_id) {
+                println!("Disabling SMT, PID: {}", process_id);
+                println!("Result: {}", smt_off(handle));
+                unsafe {
+                    let _ = CloseHandle(handle);
+                };
+                break;
+            }
         }
     }
 }
