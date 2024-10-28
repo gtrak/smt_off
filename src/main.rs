@@ -74,42 +74,12 @@ fn _smt_on(process: HANDLE) -> bool {
     }
 }
 
-fn find_process(
-    search_name: Option<&String>,
-    search_pid: Option<u32>,
-    process_id: u32,
-) -> Option<HANDLE> {
-    let mut process_name: [u16; 260] = [0; 260];
-
-    // Open process with the required access flags
-    let h_process: HANDLE = unsafe {
-        match OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_LIMITED_INFORMATION,
-            false,
-            process_id,
-        ) {
-            Err(e) => {
-                println!("Error opening process: {}", e);
-                return None;
-            }
-            Ok(handle) => {
-                println!("Process opened: {}", process_id);
-                handle
-            }
-        }
-    };
-
-    if let Some(search_pid) = search_pid {
-        if search_pid == process_id {
-            return Some(h_process);
-        }
-    }
-
+fn module_matches(h_process: HANDLE, search_name: Option<&String>) -> Option<HANDLE> {
     let mut num_modules_returned: u32 = 0;
     let mut modules: Vec<*mut c_void> = Vec::with_capacity(1024);
     let modules_uninit = modules.spare_capacity_mut();
+    let mut process_name: [u16; 260] = [0; 260];
 
-    // Get the process modules
     unsafe {
         if K32EnumProcessModulesEx(
             h_process,
@@ -146,6 +116,68 @@ fn find_process(
         let _ = CloseHandle(h_process);
     }
     return None;
+}
+
+fn process_module_matches(
+    search_name: Option<&String>,
+    search_pid: Option<u32>,
+    process_id: u32,
+) -> Option<HANDLE> {
+    // Open process with the required access flags
+    let h_process: HANDLE = unsafe {
+        match OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_LIMITED_INFORMATION,
+            false,
+            process_id,
+        ) {
+            Err(e) => {
+                println!("Error opening process: {}", e);
+                return None;
+            }
+            Ok(handle) => {
+                println!("Process opened: {}", process_id);
+                handle
+            }
+        }
+    };
+
+    if let Some(search_pid) = search_pid {
+        if search_pid == process_id {
+            return Some(h_process);
+        }
+    }
+
+    return module_matches(h_process, search_name);
+}
+
+fn get_process_old(search_name: Option<&String>, search_pid: Option<u32>) {
+    let mut a_processes: [u32; 1024] = [0; 1024];
+    let mut cb_needed = 0;
+
+    // Enumerate processes
+    unsafe {
+        EnumProcesses(
+            a_processes.as_mut_ptr(),
+            mem::size_of_val(&a_processes) as u32,
+            &mut cb_needed,
+        )
+        .expect("Failed to enumerate processes")
+    };
+
+    let c_processes = cb_needed / mem::size_of::<u32>() as u32;
+    // Print each process name and ID
+    for &process_id in &a_processes[..c_processes as usize] {
+        if process_id != 0 {
+            if let Some(handle) = process_module_matches(search_name, search_pid, process_id) {
+                println!("Disabling SMT, PID: {}", process_id);
+                println!("Result: {}", smt_off(handle));
+                unsafe {
+                    let _ = CloseHandle(handle);
+                };
+                break;
+            }
+        }
+    }
 }
 
 fn escalate() {
@@ -187,34 +219,10 @@ fn main() {
         .get_matches();
 
     let search_name: Option<&String> = matches.get_one("name");
-    let search_pid: Option<u32> = matches.get_one("PID").map(|x: &String| x.parse::<u32>().expect("PID invalid"));
+    let search_pid: Option<u32> = matches
+        .get_one("PID")
+        .map(|x: &String| x.parse::<u32>().expect("PID invalid"));
 
     escalate();
-    let mut a_processes: [u32; 1024] = [0; 1024];
-    let mut cb_needed = 0;
-
-    // Enumerate processes
-    unsafe {
-        EnumProcesses(
-            a_processes.as_mut_ptr(),
-            mem::size_of_val(&a_processes) as u32,
-            &mut cb_needed,
-        )
-        .expect("Failed to enumerate processes")
-    };
-
-    let c_processes = cb_needed / mem::size_of::<u32>() as u32;
-    // Print each process name and ID
-    for &process_id in &a_processes[..c_processes as usize] {
-        if process_id != 0 {
-            if let Some(handle) = find_process(search_name, search_pid, process_id) {
-                println!("Disabling SMT, PID: {}", process_id);
-                println!("Result: {}", smt_off(handle));
-                unsafe {
-                    let _ = CloseHandle(handle);
-                };
-                break;
-            }
-        }
-    }
+    get_process_old(search_name, search_pid);
 }
