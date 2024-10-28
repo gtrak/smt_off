@@ -1,7 +1,14 @@
 use clap::arg;
 use clap::Command;
+use windows::Win32::System::Diagnostics::ToolHelp::CreateToolhelp32Snapshot;
+use windows::Win32::System::Diagnostics::ToolHelp::Process32FirstW;
+use windows::Win32::System::Diagnostics::ToolHelp::Process32NextW;
+use windows::Win32::System::Diagnostics::ToolHelp::PROCESSENTRY32W;
+use windows::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPPROCESS;
+
 use std::ffi::c_void;
 use std::mem;
+
 use std::ptr::null_mut;
 use windows::Win32::Foundation::GetLastError;
 use windows::Win32::Foundation::LUID;
@@ -118,28 +125,34 @@ fn module_matches(h_process: HANDLE, search_name: Option<&String>) -> Option<HAN
     return None;
 }
 
+fn open_by_pid(process_id: u32) -> Option<HANDLE> {
+  unsafe {
+    match OpenProcess(
+        PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_LIMITED_INFORMATION,
+        false,
+        process_id,
+    ) {
+        Err(e) => {
+            println!("Error opening process: {}", e);
+            return None;
+        }
+        Ok(handle) => {
+            println!("Process opened: {}", process_id);
+            Some(handle)
+        }
+    }
+  }
+}
+
 fn process_module_matches(
     search_name: Option<&String>,
     search_pid: Option<u32>,
     process_id: u32,
 ) -> Option<HANDLE> {
     // Open process with the required access flags
-    let h_process: HANDLE = unsafe {
-        match OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_LIMITED_INFORMATION,
-            false,
-            process_id,
-        ) {
-            Err(e) => {
-                println!("Error opening process: {}", e);
-                return None;
-            }
-            Ok(handle) => {
-                println!("Process opened: {}", process_id);
-                handle
-            }
-        }
-    };
+    let h_process = open_by_pid(process_id);
+
+    if let Some(h_process) = h_process {
 
     if let Some(search_pid) = search_pid {
         if search_pid == process_id {
@@ -148,9 +161,11 @@ fn process_module_matches(
     }
 
     return module_matches(h_process, search_name);
+  }
+  None
 }
 
-fn get_process_old(search_name: Option<&String>, search_pid: Option<u32>) {
+pub fn get_process_old(search_name: Option<&String>, search_pid: Option<u32>) {
     let mut a_processes: [u32; 1024] = [0; 1024];
     let mut cb_needed = 0;
 
@@ -178,6 +193,44 @@ fn get_process_old(search_name: Option<&String>, search_pid: Option<u32>) {
             }
         }
     }
+}
+
+pub fn get_process(search_name: Option<&String>, search_pid: Option<u32>) {
+    let snapshot = unsafe {
+        CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).expect("Failed to get process snapshot.")
+    };
+    let mut process: PROCESSENTRY32W = Default::default();
+    process.dwSize = mem::size_of_val(&process) as u32;
+
+    if unsafe { Process32FirstW(snapshot, &mut process).is_ok() } {
+        loop {
+            if unsafe { Process32NextW(snapshot, &mut process).is_err() } {
+                break;
+            } else {
+              let process_name = String::from_utf16(&process.szExeFile.into_iter().collect::<Vec<_>>()).unwrap();
+              let process_id = process.th32ProcessID as u32;
+              let handle = (|| {
+                if let Some(search_name) = search_name {
+                  if process_name.contains(search_name) {
+                    return open_by_pid(process_id);
+                  }
+                };
+                if let Some(search_pid) = search_pid {
+                  if process_id == search_pid {
+                    return open_by_pid(process_id);
+                  }
+                };
+                None
+              })();
+              if let Some(handle) = handle {
+                println!("Disabling SMT, PROCESS: {}, PID: {}", process_name, process_id);
+                println!("Result: {}", smt_off(handle));
+                return;
+              }
+        }
+      };
+    }
+    println!("No matching processes found.");
 }
 
 fn escalate() {
@@ -224,5 +277,6 @@ fn main() {
         .map(|x: &String| x.parse::<u32>().expect("PID invalid"));
 
     escalate();
-    get_process_old(search_name, search_pid);
+    // get_process_old(search_name, search_pid);
+    get_process(search_name, search_pid);
 }
