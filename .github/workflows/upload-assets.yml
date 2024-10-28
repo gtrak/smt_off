@@ -1,0 +1,53 @@
+name: upload
+
+on:
+  push:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  build-release:
+    name: build-release
+    strategy:
+      matrix:
+        build: [windows-x86_64-msvc]
+        include:
+          - build: windows-x86_64-msvc
+            target: x86_64-pc-windows-msvc
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+        # Run build
+      - name: install rustup
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > rustup-init.sh
+          sh rustup-init.sh -y --default-toolchain none
+          rustup target add ${{ matrix.target }}
+
+      - name: Build release binaries
+        run: cargo build --release
+
+      - name: Build archive
+        shell: bash
+        run: |
+          staging="smt_off_${{ matrix.build }}_${{ github.event.release.tag_name }}"
+          mkdir -p "$staging"
+
+          cp {README.md,LICENSE} "$staging/"
+
+          cp target/release/smt_off.exe "$staging/"
+          7z a "$staging.zip" "$staging"
+          echo "ASSET=$staging.zip" >> $GITHUB_ENV
+
+      - name: Upload Release Asset
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ env.ASSET }}
+          asset_name: ${{ env.ASSET }}
+          asset_content_type: application/octet-stream
