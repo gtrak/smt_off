@@ -1,33 +1,17 @@
 use clap::arg;
 use clap::Command;
-use windows::Win32::System::Diagnostics::ToolHelp::CreateToolhelp32Snapshot;
-use windows::Win32::System::Diagnostics::ToolHelp::Process32FirstW;
-use windows::Win32::System::Diagnostics::ToolHelp::Process32NextW;
-use windows::Win32::System::Diagnostics::ToolHelp::PROCESSENTRY32W;
-use windows::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPPROCESS;
-
 use std::mem;
-
-use std::ptr::null_mut;
-
-use windows::Win32::Foundation::LUID;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
-use windows::Win32::Security::AdjustTokenPrivileges;
-use windows::Win32::Security::LookupPrivilegeValueW;
-use windows::Win32::Security::LUID_AND_ATTRIBUTES;
-use windows::Win32::Security::SE_INC_BASE_PRIORITY_NAME;
-use windows::Win32::Security::SE_PRIVILEGE_ENABLED;
-use windows::Win32::Security::TOKEN_ALL_ACCESS;
-use windows::Win32::Security::TOKEN_PRIVILEGES;
-
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
 use windows::Win32::System::SystemInformation::{
     GetSystemCpuSetInformation, SYSTEM_CPU_SET_INFORMATION,
 };
-use windows::Win32::System::Threading::GetCurrentProcess;
-use windows::Win32::System::Threading::OpenProcessToken;
-use windows::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
-use windows::Win32::System::Threading::PROCESS_SET_LIMITED_INFORMATION;
-use windows::Win32::System::Threading::{OpenProcess, SetProcessDefaultCpuSets};
+use windows::Win32::System::Threading::{
+    OpenProcess, SetProcessDefaultCpuSets, PROCESS_QUERY_LIMITED_INFORMATION,
+    PROCESS_SET_LIMITED_INFORMATION,
+};
 
 fn cpu_ids() -> Vec<u32> {
     let mut buffer_size = 0u32;
@@ -128,38 +112,6 @@ fn get_process(search_name: Option<&String>, search_pid: Option<u32>) -> Option<
     None
 }
 
-fn escalate() {
-    unsafe {
-        let process = GetCurrentProcess();
-        let mut token: HANDLE = HANDLE(null_mut());
-        OpenProcessToken(process, TOKEN_ALL_ACCESS, &mut token)
-            .expect("Cannot escalate privileges");
-        let mut luid: LUID = Default::default();
-
-        LookupPrivilegeValueW(None, SE_INC_BASE_PRIORITY_NAME, &mut luid)
-            .expect("Could not lookup privilege");
-
-        let tp = TOKEN_PRIVILEGES {
-            Privileges: [LUID_AND_ATTRIBUTES {
-                Luid: luid,
-                Attributes: SE_PRIVILEGE_ENABLED,
-            }],
-            PrivilegeCount: 1,
-        };
-        AdjustTokenPrivileges(
-            token,
-            false,
-            Some(&tp),
-            mem::size_of_val(&tp) as u32,
-            None,
-            None,
-        )
-        .expect("Access denied. Try running from an elevated command prompt.\n");
-        println!("Succesfully escalated privileges");
-        let _ = CloseHandle(token);
-        let _ = CloseHandle(process);
-    }
-}
 fn main() {
     let matches = Command::new("smt_off") // requires `cargo` feature
         .arg(arg!(-n --name <NAME> "Process name to search and disable SMT"))
@@ -173,8 +125,6 @@ fn main() {
         .map(|x: &String| x.parse::<u32>().expect("PID invalid"));
     let revert = matches.get_flag("revert");
 
-    escalate();
-    // get_process_old(search_name, search_pid);
     if let Some(handle) = get_process(search_name, search_pid) {
         if revert {
             println!("Reverting CPU Sets back to original");
@@ -183,7 +133,9 @@ fn main() {
             println!("Disabling SMT");
             println!("Result: {}", smt_off(handle));
         }
-        unsafe { let _ = CloseHandle(handle); };
+        unsafe {
+            let _ = CloseHandle(handle);
+        };
     } else {
         println!("Process not found");
     }
