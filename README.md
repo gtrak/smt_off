@@ -1,5 +1,3 @@
-Here's the updated README in Markdown format:
-
 ---
 
 # SMT Off Utility
@@ -17,9 +15,11 @@ performance when SMT could have been a clear win, sometimes by as much as 30%.  
 can set process affinities in Task Manager, but that's not always practical either, and sometimes the game prevents you
 from doing so.
 
-I took some guidance from the WindowsInternals/CpuSet example and ProcessLasso, which is a great program, but persisting CPUSet configuration is a paid feature. CPUSets are a windows API for more softly setting affinities to a process. The
-process is not hard-pinned to the core, and it can spill over to other cores if it wants to, but in my testing this does
-provide a speed boost in some scenarios.
+CPUSets are a windows API for more softly setting affinities to a process. In my testing, disabling SMT threads helped a particularly 
+poorly-optimized game run around 15% faster, but gains should be modest or possibly negative, depending on your hardware and the game itself. 
+I took some implementation guidance from the WindowsInternals/CpuSet example and ProcessLasso, which is a great program.  Persisting CPUSet
+configuration is unfortunately a paid feature for ProcessLasso, and it's inconvenient to manually fix it every time the game launches, so I
+wrote this tool.  
 
 ## Features
 
