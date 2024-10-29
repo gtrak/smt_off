@@ -13,7 +13,7 @@ Newer games these days tend to use all cores on your system, often wastefully. S
 Additionally, SMT thread utilization might increase power requirements and actually cause your CPU to run at lower frequencies.
 
 You can disable SMT on your system in the BIOS to prevent this from happening, but by doing so, you reduce the overall
-performance when it's a clear win, sometimes by as much as 30%.  It's impractical to turn it on and off globally. You
+performance when SMT could have been a clear win, sometimes by as much as 30%.  It's impractical to turn it on and off globally. You
 can set process affinities in Task Manager, but that's not always practical either, and sometimes the game prevents you
 from doing so.
 
