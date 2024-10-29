@@ -16,9 +16,7 @@ from doing so.
 CPUSets are a windows API for more softly setting affinities to a process. In my testing, disabling SMT threads helped a particularly 
 poorly-optimized game run around 15% faster.  Gains elsewhere should be modest or possibly negative depending on your hardware and the game itself. 
 
-I took some implementation guidance from the WindowsInternals/CpuSet example and ProcessLasso, which is a great program.  Persisting CPUSet
-configuration is unfortunately a paid feature for ProcessLasso, and it's inconvenient to manually set it every time the game launches, so I
-wrote this tool.  
+I took some implementation guidance from the [WindowsInternals/CpuSet](https://github.com/zodiacon/WindowsInternals/tree/master/CpuSet) example and wanted a CLI-driven alternative to ProcessLasso for this configuration.
 
 ## Features
 
