@@ -1,5 +1,3 @@
----
-
 # SMT Off Utility
 
 A command-line tool to manage CPU sets for specific processes on Windows, allowing users to quickly disable Symmetric Multi-Threading (SMT) for specific processes or revert to the original CPU sets, allowing the process to schedule itself
