@@ -4,7 +4,7 @@ A command-line tool to manage CPU sets for specific processes on Windows, allowi
 on any logical core.
 
 ## Rationale
-Newer games these days tend to use all cores on your system, often wastefully. SMT cores are not real cores. They are just virtual cores that share resources with other logical cores.  When a game schedules work on an SMT core, it will actually be sharing resources with another logical core since those threads are not running independently and may finish their work at unpredictable times. SMT is the hardware adding another layer of scheduling.
+Newer games these days tend to use all cores on your system, often wastefully. SMT cores are not independent phsyical cores, but they share resources with another logical core.  When a game schedules work on both of a pair of SMT cores, those threads might stall and run unpredictably. SMT is a tool for increasing the throughput of total work done, but it comes at the cost of reliable timings.
 
 Additionally, SMT thread utilization might increase power requirements and actually cause your CPU to run at lower frequencies.
 
