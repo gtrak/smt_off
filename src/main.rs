@@ -113,7 +113,7 @@ fn get_process(search_name: Option<&String>, search_pid: Option<u32>) -> Option<
 }
 
 fn main() {
-    let matches = Command::new("smt_off") // requires `cargo` feature
+    let matches = Command::new("smt_off")
         .arg(arg!(-n --name <NAME> "Process name to search and disable SMT"))
         .arg(arg!(-p --PID <PID> "PID of the process"))
         .arg(arg!(-r --revert "Revert CPU Sets back to original"))
