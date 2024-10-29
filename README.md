@@ -29,14 +29,14 @@ provide a speed boost in some scenarios.
 
 - **Revert CPU Sets**: Restores the original CPU set configuration for the specified process.
 
-## Requirements
+## Development Requirements
 
 - **Rust**: Ensure that Rust is installed. You can download it from [rust-lang.org](https://www.rust-lang.org/).
-- **Windows**: This tool relies on Windows-specific APIs and is intended for Windows systems.
+- **Windows**: This tool relies on Windows-specific APIs and is intended for Windows systems.  I have successfully run it with msvc and mingw rust toolchains.
 
 ## Installation
 
-Download a release zip from github.com and extract it to a location of your choice.
+Download a release zip from [github.com](https://github.com/gtrak/smt_off/releases) and extract it to a location of your choice.
 
 To build it yourself: 
 
