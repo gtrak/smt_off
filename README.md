@@ -25,9 +25,9 @@ provide a speed boost in some scenarios.
 
 - **Disable SMT**: Limits a process to every second core, effectively disabling SMT for the process, with some caveats:
   - This tool has been tested only on an AMD 5900x processor. **Compatibility with Intel CPUs, particularly those with Efficiency cores (E-cores), is unknown** and may require adjustments. I welcome collaboration with those users.
-  - This only works correctly if you SMT or hyperthreading is enabled.  If SMT is disabled, you've effectively limited the process to half of your physical cores, which is likely not what you wanted.
+  - This only works as intended if SMT or hyperthreading is enabled.  If SMT is disabled, you've effectively limited the process to half of your physical cores, which is likely not what you wanted.
 
-- **Revert CPU Sets**: Restores the original CPU set configuration for the specified process.
+- **Revert CPU Sets**: Restores the original CPU set configuration for the specified process. There's no need to run this unless you are just testing the effect, since every new process launch starts with fresh default settings. 
 
 ## Development Requirements
 
