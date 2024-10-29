@@ -14,9 +14,10 @@ can set process affinities in Task Manager, but that's not always practical eith
 from doing so.
 
 CPUSets are a windows API for more softly setting affinities to a process. In my testing, disabling SMT threads helped a particularly 
-poorly-optimized game run around 15% faster, but gains should be modest or possibly negative, depending on your hardware and the game itself. 
+poorly-optimized game run around 15% faster.  Gains elsewhere should be modest or possibly negative depending on your hardware and the game itself. 
+
 I took some implementation guidance from the WindowsInternals/CpuSet example and ProcessLasso, which is a great program.  Persisting CPUSet
-configuration is unfortunately a paid feature for ProcessLasso, and it's inconvenient to manually fix it every time the game launches, so I
+configuration is unfortunately a paid feature for ProcessLasso, and it's inconvenient to manually set it every time the game launches, so I
 wrote this tool.  
 
 ## Features
